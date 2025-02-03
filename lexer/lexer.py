@@ -3,6 +3,7 @@ from lexer.errors import LexicalError
 from core.constants import KEYWORDS, OPERATORS, DELIMITERS
 from core.states import State
 from typing import List, Optional
+from lexer.helpers import is_alpha, is_num, is_space
 
 
 class Lexer:
@@ -22,11 +23,11 @@ class Lexer:
         self.transition_table = {
             State.START: {
                 'operator': lambda char: char in '+-*/<>=!|%~&.',
-                'number': lambda char: char.isdigit(),
-                'identifier': lambda char: char.isalpha() or char == '_',
+                'number': lambda char: is_num(char),
+                'identifier': lambda char: is_alpha(char) or char == '_',
                 'string': lambda char: char == '"',
                 'delimiter': lambda char: char in '()[].:,',
-                'whitespace': lambda char: char.isspace(),
+                'whitespace': lambda char: is_space(char),
                 'comment': lambda char: char  == '#'
             }
         }
@@ -196,12 +197,21 @@ class Lexer:
         if self.source[self.current_pos] == '.' and self.current_pos + 1 < len(self.source) and self.source[self.current_pos + 1].isdigit():
             # Consume the decimal point
             number += self._advance()
+
+            # Count values if its float or double
+            char_count = 0
+
             # Consume the fractional digits.
             while self.current_pos < len(self.source) and self.source[self.current_pos].isdigit():
                 char = self._advance()
                 if char is not None:
                     number += char
-            self.tokens.append(Token(TokenType.FLOAT_LITERAL_TOKEN, number, line, column))
+                    char_count += 1
+            
+            if char_count <= 7:
+                self.tokens.append(Token(TokenType.FLOAT_LITERAL_TOKEN, number, line, column))
+            else:
+                self.tokens.append(Token(TokenType.DOUBLE_LITERAL_TOKEN, number, line, column))
         else:
             # State: Integer
             # If no decimal point is found, treat the number as an integer
@@ -310,12 +320,13 @@ class Lexer:
         current: str = self.source[self.current_pos]
         next_char: str = self._peek()
 
+        comment_value = []
+
         if current == '#' and next_char == '#':
             # Found a multiline comment
             self._advance()  # Consume the first '#'
             self._advance()  # Consume the second '#'
 
-            comment_value = []
             comment_value.append('##')   # Add the two parsed pounds
 
             while True:
@@ -347,7 +358,6 @@ class Lexer:
             return
 
         if current == '#':
-            comment_value = []
             while True:
                 current: Optional[str] = self._advance()
 
@@ -368,5 +378,3 @@ class Lexer:
 
             # Add token with the comment token type
             self.tokens.append(Token(TokenType.SINGLE_COMMENT_TOKEN, full_string, line, column))
-
-            return
